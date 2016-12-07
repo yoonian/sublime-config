@@ -2,6 +2,8 @@
 from __future__ import unicode_literals, division, absolute_import, print_function
 
 import os
+import glob
+import json
 import threading
 import sys
 import shellenv
@@ -71,6 +73,73 @@ class ExecutableError(EnvironmentError):
 
     name = None
     dirs = None
+
+
+def getFileName():
+    win = sublime.active_window()
+    if win:
+        view = win.active_view()
+        if view and view.file_name():
+            return view.file_name()
+    return ""   
+
+
+def getProject(filename=""):
+    if len(filename) == 0:
+        filename = getFileName()
+
+    if len(filename) == 0:
+        return (False, False)
+
+    dirname = os.path.dirname(filename)
+    if os.path.exists(dirname):
+        os.chdir(dirname);
+        findings = glob.glob("*.sublime-project")
+        if len(findings):
+            return (findings[0].replace(".sublime-project", ""), os.path.join(dirname, findings[0]))
+        elif os.path.ismount(dirname):
+            return (False, False)
+        else:
+            return getProject(dirname)
+    return (False, False)
+
+
+def expand_variables(path, window):
+    if sys.version_info >= (3,):
+        return sublime.expand_variables(path, window.extract_variables())
+
+    project_name, project_path = getProject()
+    if project_path:
+        path = path.replace(u'${project_path}', os.path.dirname(project_path))
+    return path
+
+
+def get_window_settings(window, view=None, filter="golang"):
+    """
+    Get settings of project configuration
+
+    :return:
+        A dict - settings dictionary
+    """
+
+    window_settings = {}
+    if sys.version_info < (3,):
+        project_name, project_path = getProject()
+        if project_path:
+            infile = open(project_path, "r")
+            project = json.loads(infile.read())
+            infile.close()
+            window_settings = project.get('settings', {}).get(filter, {})
+
+        return window_settings
+
+    if window:
+        if sys.version_info >= (3,) and window.project_data():
+            window_settings = window.project_data().get('settings', {}).get(filter, {})
+        elif not view and window.active_view():
+            window_settings = window.active_view().settings().get(filter, {})
+
+    return window_settings
 
 
 def debug_enabled():
@@ -340,11 +409,18 @@ def setting_value(setting_name, view=None, window=None):
 
     has_multiple = False
     if setting_name == 'GOPATH':
+        golang_settings = get_window_settings(window, view)
+        if 'gopaths' in golang_settings:
+            path = ''.join([os.pathsep + gopath for gopath in golang_settings['gopaths']])
+            setting += expand_variables(path, window)
+            
         values = setting.split(os.pathsep)
         has_multiple = len(values) > 1
         missing = []
 
         for value in values:
+            if not value:
+                continue
             if not os.path.exists(value):
                 missing.append(value)
 
@@ -526,12 +602,7 @@ def _get_most_specific_setting(name, view, window):
     if view and not window:
         window = view.window()
 
-    window_settings = {}
-    if window:
-        if sys.version_info >= (3,) and window.project_data():
-            window_settings = window.project_data().get('settings', {}).get('golang', {})
-        elif not view and window.active_view():
-            window_settings = window.active_view().settings().get('golang', {})
+    window_settings = get_window_settings(window, view, 'golang')
 
     settings_objects = [
         (view_settings, 'project file'),
