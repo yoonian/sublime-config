@@ -105,7 +105,7 @@ def getProject(filename=""):
 
 
 def expand_variables(path, window):
-    if sys.version_info >= (3,):
+    if not py2:
         return sublime.expand_variables(path, window.extract_variables())
 
     project_name, project_path = getProject()
@@ -123,7 +123,7 @@ def get_window_settings(window, view=None, filter="golang"):
     """
 
     window_settings = {}
-    if sys.version_info < (3,):
+    if py2:
         project_name, project_path = getProject()
         if project_path:
             infile = open(project_path, "r")
@@ -134,7 +134,7 @@ def get_window_settings(window, view=None, filter="golang"):
         return window_settings
 
     if window:
-        if sys.version_info >= (3,) and window.project_data():
+        if not py2 and window.project_data():
             window_settings = window.project_data().get('settings', {}).get(filter, {})
         elif not view and window.active_view():
             window_settings = window.active_view().settings().get(filter, {})
@@ -668,7 +668,7 @@ def _check_view_window(view, window):
             raise TypeError('view must be an instance of sublime.View, not %s' % _type_name(view))
 
     if window is not None:
-        if not isinstance(window, sublime.Window) and sys.version_info >= (3,):
+        if not isinstance(window, sublime.Window) and not py2:
             raise TypeError('window must be an instance of sublime.Window, not %s' % _type_name(window))
 
 
